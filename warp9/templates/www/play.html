@@ -37,6 +37,7 @@
               <th>Role</th>
               <th>Salary</th>
               <th>Location</th>
+              <th>Action</th>
               <th>Sleep</th>
               <th>Health</th>
               <th>Morale</th>
@@ -134,7 +135,7 @@
         <div class="list-group">
           <div class="list-group-item">
             Alert
-        <div class="btn-group pull-right" data-toggle="buttons">
+        <div id="btn-group-alertlevel" class="btn-group pull-right" data-toggle="buttons">
           <label class="btn btn-success btn-xs active btn-alertlevel" id="alertlevel-0">
             <input type="radio" name="options" checked>Green
           </label>
@@ -163,7 +164,7 @@
             <span class="badge status-life">0</span>
           </a>
         </div>
-        <button id="btn-reset" class="btn btn-default">Reset</button>
+        <button class="btn btn-default btn-reset">Reset</button>
       </div>
     </div>
   </div>
@@ -177,31 +178,6 @@
 <script type="text/javascript">
   $(function() {
     Game.init(document.getElementById('can-map'));
-    $("#btn-reset").click(function(evt) {
-      evt.preventDefault();
-      Game.reset();
-    });
-    $("#alertlevel-0").click(function(evt) {
-      evt.preventDefault();
-      $(".btn-alertlevel").removeClass("btn-warning");
-      $(".btn-alertlevel").removeClass("btn-danger");
-      $(".btn-alertlevel").addClass("btn-success");
-      Game.setAlertLevel(0);
-    });
-    $("#alertlevel-1").click(function(evt) {
-      evt.preventDefault();
-      $(".btn-alertlevel").removeClass("btn-success");
-      $(".btn-alertlevel").removeClass("btn-danger");
-      $(".btn-alertlevel").addClass("btn-warning");
-      Game.setAlertLevel(1);
-    });
-    $("#alertlevel-2").click(function(evt) {
-      evt.preventDefault();
-      $(".btn-alertlevel").removeClass("btn-warning");
-      $(".btn-alertlevel").removeClass("btn-success");
-      $(".btn-alertlevel").addClass("btn-danger");
-      Game.setAlertLevel(2);
-    });
   });
 </script>
 {% endblock %}
