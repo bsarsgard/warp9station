@@ -42,4 +42,16 @@ def get_last_name():
 
 
 def get_full_name(gender=None):
+    if random.randint(0, 9) == 0:
+        # middle name
+        return "{0} {1} {2}".format(
+                get_first_name(gender),
+                get_first_name(gender),
+                get_last_name())
+    if random.randint(0, 9) == 0:
+        # middle initial
+        return "{0} {1} {2}".format(
+                get_first_name(gender),
+                get_first_name(gender)[0],
+                get_last_name())
     return "{0} {1}".format(get_first_name(gender), get_last_name())

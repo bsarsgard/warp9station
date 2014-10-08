@@ -1,24 +1,27 @@
 // Declare game object
 var Game = {
 station: {},
+planet: {},
 // game variables
 market: [],
 canvas: null,
 offset_x: 1,
 offset_y: 1,
-spacing: 5,
+spacing: 0,
 scale: 1.0,
-tile_wide: 55,
-tile_high: 55,
+tile_wide: 32,
+tile_high: 32,
 mx: null,
 my: null,
 mdown: false,
 mdrag: false,
 selected: {x:0,y:0},
+images: {},
 
 // game functions
 init: function(canvas) {
 	$.cookie.json = true;
+  $.ajaxSetup({ "timeout": 60000 });
   $(".btn-reset").click(function(evt) {
     evt.preventDefault();
     Game.reset();
@@ -32,6 +35,7 @@ init: function(canvas) {
     Game.Skills = data.skills;
     Game.Roles = data.roles;
     Game.Modules = data.modules;
+    Game.PlanetAttributes = data.planetattributes;
     if ($.cookie('warp9-stationid') === undefined) {
       Game.reset();
     } else {
@@ -39,13 +43,78 @@ init: function(canvas) {
     }
   });
 },
+loadImage: function(path) {
+  this.images[path] = new Image();
+  this.images[path].src = '/media/img/warp9/' + path;
+},
 start: function() {
   this.updateAlertLevels();
+  this.updateMarket();
+  this.updateShips();
+  this.updateRecruits();
+  this.updateCrew();
+  this.updateStatus();
+  this.updatePlanet();
+  this.updateSelected();
   this.save();
   this.offset_x = this.canvas.width / 2 - (this.station.stationmap[0].length * this.tile_wide / 2);
   this.offset_y = this.canvas.height / 2 - (this.station.stationmap.length * this.tile_high / 2);
   this.img_bg = new Image();
   this.img_bg.src = '/media/img/warp9/bg_1_1.png';
+
+  this.loadImage('al.png');
+  this.loadImage('br.png');
+  this.loadImage('cb_0.png');
+  this.loadImage('cb_1.png');
+  this.loadImage('co_0000.png');
+  this.loadImage('co_0001.png');
+  this.loadImage('co_0010.png');
+  this.loadImage('co_0011.png');
+  this.loadImage('co_0100.png');
+  this.loadImage('co_0101.png');
+  this.loadImage('co_0110.png');
+  this.loadImage('co_0111.png');
+  this.loadImage('co_1000.png');
+  this.loadImage('co_1001.png');
+  this.loadImage('co_1010.png');
+  this.loadImage('co_1011.png');
+  this.loadImage('co_1100.png');
+  this.loadImage('co_1101.png');
+  this.loadImage('co_1110.png');
+  this.loadImage('co_1111.png');
+  this.loadImage('en.png');
+  this.loadImage('ls_0.png');
+  this.loadImage('ls_1.png');
+  this.loadImage('qu.png');
+  this.loadImage('re_0.png');
+  this.loadImage('re_1.png');
+  this.loadImage('ss.png');
+  this.loadImage('ta.png');
+  this.loadImage('we_0.png');
+  this.loadImage('we_1.png');
+  this.loadImage('x_0001.png');
+  this.loadImage('x_0010.png');
+  this.loadImage('x_0011.png');
+  this.loadImage('x_0100.png');
+  this.loadImage('x_0101.png');
+  this.loadImage('x_0110.png');
+  this.loadImage('x_0111.png');
+  this.loadImage('x_1000.png');
+  this.loadImage('x_1001.png');
+  this.loadImage('x_1010.png');
+  this.loadImage('x_1011.png');
+  this.loadImage('x_1100.png');
+  this.loadImage('x_1101.png');
+  this.loadImage('x_1110.png');
+  this.loadImage('x_1111.png');
+  this.loadImage('Civilian_0.png');
+  this.loadImage('Civilian_1.png');
+  this.loadImage('Captain_0.png');
+  this.loadImage('Captain_1.png');
+  this.loadImage('Command_0.png');
+  this.loadImage('Command_1.png');
+  this.loadImage('Operations_0.png');
+  this.loadImage('Operations_1.png');
 
   this.draw();
   this.canvas.addEventListener('mousedown', function(evt) {
@@ -91,24 +160,44 @@ tick: function() {
   });
 },
 turn: function(cb) {
-  var data = { "alertlevel": Game.station.alertlevel };
-  $.ajax({
-    dataType: "json",
-    url: "/game/station/" + Game.station.id + "/",
-    type: "POST",
-    data: JSON.stringify(data),
-  }).done(function(data) {
-    Game.station = data.station;
-    Game.draw();
-    Game.updateMarket();
-    Game.updateRecruits();
-    Game.updateCrew();
-    Game.updateStatus();
-    Game.updateSelected();
-    if (cb !== undefined) {
-      cb();
-    }
-  });
+  if ($(".input-block-turn").is(":focus")) {
+    // blocked; try again in a second
+    setTimeout(function() { Game.turn(cb); }, 1000);
+  } else {
+    $(".input-block-turn").prop("disabled", true);
+    var data = { "alertlevel": Game.station.alertlevel,
+      "tradegoods": this.station.tradegoods };
+    $.ajax({
+      dataType: "json",
+      url: "/game/station/" + Game.station.id + "/",
+      type: "POST",
+      data: JSON.stringify(data),
+    }).done(function(data) {
+      var tg = Game.station.tradegoods; // save this in case user changed
+      Game.station = data.station;
+      for (var tradegood_id in Game.TradeGoods) {
+        if (Game.station.tradegoods[tradegood_id] !== undefined && tg[tradegood_id] !== undefined) {
+          Game.station.tradegoods[tradegood_id].bid = tg[tradegood_id].bid;
+          Game.station.tradegoods[tradegood_id].ask = tg[tradegood_id].ask;
+          Game.station.tradegoods[tradegood_id].buy = tg[tradegood_id].buy;
+        }
+      }
+      Game.planet = data.station.planet;
+      Game.draw();
+      Game.updateMarket();
+      Game.updateShips();
+      Game.updateRecruits();
+      Game.updateCrew();
+      Game.updateStatus();
+      Game.updatePlanet();
+      Game.updateSelected();
+    }).always(function(data) {
+      $(".input-block-turn").prop("disabled", false);
+      if (cb !== undefined) {
+        cb();
+      }
+    });
+  }
 },
 updateAlertLevels: function() {
   var html = "";
@@ -124,6 +213,14 @@ updateAlertLevels: function() {
     });
   }
 },
+updatePlanet: function() {
+  $(".planet-name").html(this.planet.name);
+  var html = "";
+  for (var planetattribute_id in this.PlanetAttributes) {
+    html += "<tr><th>" + this.PlanetAttributes[planetattribute_id].name + "</th><td>" + this.planet.settings[planetattribute_id] + "</td></tr>";
+  }
+  $(".tbl-planet-body").html(html);
+},
 updateStatus: function() {
   var powerDemand = 0;
   var powerSupply = 0;
@@ -135,78 +232,11 @@ updateStatus: function() {
   var counts = {};
   var skills = {};
 
-  // first let's count our modules
-  /*
-  for (var yy = 0; yy < this.map.length; yy++) {
-    for (var xx = 0; xx < this.map[yy].length; xx++) {
-      if (this.map[yy][xx].on) {
-        var map = this.map[yy][xx];
-        var module = this.Modules[map.module_id];
-        for (var ii = 0; ii < module.enables.length; ii++) {
-          if (module.enables.length == 1) {
-            // only single-use modules contribute to count
-            if (counts[module.enables[ii]] === undefined) {
-              counts[module.enables[ii]] = 1;
-            } else {
-              counts[module.enables[ii]] += 1;
-            }
-          }
-          // all modules enable skills
-          if (skills[module.enables[ii]] === undefined) {
-            skills[module.enables[ii]] = [];
-          }
-          for (var jj = 0; jj < map.crew.length; jj++) {
-            skills[module.enables[ii]].push(Math.log(this.crew[map.crew[jj]].skills[module.enables[ii]]));
-          }
-        }
-      }
-    }
-  }
-  // now we can get the stats
-  for (var yy = 0; yy < this.map.length; yy++) {
-    for (var xx = 0; xx < this.map[yy].length; xx++) {
-      var map = this.map[yy][xx];
-      var module = this.Modules[map.module_id];
-      var ct = counts[module.id] === undefined ? 0 : counts[module.id];
-      var sk = 0;
-      if (skills[module.id] !== undefined && skills[module.id].length > 0) {
-        sk = skills[module.id].reduce(function(a, b) { return a + b });
-        sk = Math.round(sk / skills[module.id].length);
-      }
-      map.efficiency = (this.getEfficiency(ct) + this.getEfficiency(sk)) / 2;
-      if (module.power > 0) {
-        // power supplier
-        powerSupply += Math.round(module.power * map.efficiency);
-      } else {
-        powerDemand -= module.power;
-      }
-      if (module.weapons > 0) {
-        // weapons supplier
-        weaponsSupply += Math.round(module.weapons * map.efficiency);
-      } else {
-        weaponsDemand -= module.weapons;
-      }
-      if (module.life > 0) {
-        // life supplier
-        lifeSupply += Math.round(module.life * map.efficiency);
-      } else {
-        lifeDemand -= module.life;
-      }
-    }
-  }
-  this.station.power = powerSupply - powerDemand;
-  if (this.station.power > 0) {
-    this.station.weapons = weaponsSupply - weaponsDemand;
-    this.station.life = lifeSupply - lifeDemand;
-  } else {
-    // without power, no other systems can operate
-    this.station.weapons = 0;
-    this.station.life = 0;
-  }
-  */
+  $(".status-credits").text(Math.round(this.station.credits * 100.0) / 100.0);
   $(".status-power").text(this.station.power);
   $(".status-weapons").text(this.station.weapons);
   $(".status-life").text(this.station.life);
+  $(".status-cargo").text(this.station.cargo);
 },
 updateSelected: function() {
   var html = "";
@@ -241,8 +271,11 @@ updateSelected: function() {
         Game.station = data.station;
         Game.draw();
         var coords = Game.getCoordinateAt(Game.mx, Game.my);
-        Game.selectModule(coords.x, coords.y);
-        Game.updateSelected();
+        var cell = Game.getCellAt(coords.x, coords.y);
+        if (cell !== null) {
+          Game.selectModule(coords.x, coords.y);
+          Game.updateSelected();
+        }
       },
     });
   });
@@ -294,6 +327,12 @@ updateRecruits: function() {
     });
   });
 },
+getCrewImage: function(crew) {
+  var img = crew.role == null ? 'Civilian' : this.Roles[crew.role].name;
+  img += this.station.life > 0 ? '_1' : '_0';
+  img += '.png';
+  return img;
+},
 updateCrew: function() {
   var html = "";
   for (var crew_id in this.station.crew) {
@@ -301,7 +340,17 @@ updateCrew: function() {
     var role = this.Roles[crew.role];
     var cell = this.station.stationcells[crew.stationcell];
     var module = this.Modules[cell.module];
-    html += '<tr id="tr-crew-' + crew.id + '"><td>' + crew.name + '</td><td>' + (role === undefined ? 'Civilian' : role.name) + '</td><td>' + Math.round(crew.salary) + '</td><td>' + module.name + '</td><td>' + crew.action + '</td><td>' + crew.sleep + '</td><td>' + crew.health + '</td><td>' + crew.morale + '</td><td>';
+    html += '<tr id="tr-crew-' + crew.id + '">';
+    html += '<td><img src="/media/img/warp9/' + this.getCrewImage(crew) + '" /></td>';
+    html += '<td>' + crew.name + '</td>';
+    html += '<td>' + (role === undefined ? 'Civilian' : role.name) + '</td>';
+    html += '<td>' + Math.round(crew.salary) + '</td>';
+    html += '<td>' + module.name + '</td>';
+    html += '<td>' + crew.action + '</td>';
+    html += '<td>' + crew.sleep + '</td>';
+    html += '<td>' + crew.health + '</td>';
+    html += '<td>' + crew.morale + '</td>';
+    html += '<td>';
     for (var skill_id in crew.skills) {
       html += this.Skills[skill_id].name + ': ' + crew.skills[skill_id].rank + '<br/>';
     }
@@ -357,16 +406,110 @@ updateCrew: function() {
     });
   }
 },
+updateShips: function() {
+  var html = "";
+  for (var ship_id in this.station.ships) {
+    var ship = this.station.ships[ship_id];
+    html += '<tr><td>' + ship.name + '</td><td>' + ship.credits + '</td><td>' + ship.cargo + '</td></tr>';
+  }
+  $(".tbl-ships-body").html(html);
+},
 updateMarket: function() {
   var html = "";
   for (var tradegood_id in this.TradeGoods) {
-    var qty = 0;
-    if (this.station.tradegoods[tradegood_id] !== undefined) {
-      qty = this.station.tradegoods[tradegood_id].quantity;
+    var station_qty = 0;
+    var planet_qty = 0;
+    if (this.station.tradegoods[tradegood_id] === undefined) {
+      station_qty = 0;
+      station_bid = 0;
+      station_ask = 0;
+      station_buy = 0;
+    } else {
+      station_qty = this.station.tradegoods[tradegood_id].quantity;
+      station_bid = Math.round(this.station.tradegoods[tradegood_id].bid * 100.0) / 100.0;
+      station_ask = Math.round(this.station.tradegoods[tradegood_id].ask * 100.0) / 100.0;
+      station_buy = this.station.tradegoods[tradegood_id].buy;
     }
-    html += '<tr><td>' + this.TradeGoods[tradegood_id].name + '</td><td>$' + (Math.round(this.TradeGoods[tradegood_id].base_price * 100.0) / 100.0) + '</td><td>' + qty + '</td></tr>';
+    if (this.planet.tradegoods[tradegood_id] === undefined) {
+      planet_qty = 0;
+      planet_bid = 0;
+      planet_ask = 0;
+    } else {
+      planet_qty = this.planet.tradegoods[tradegood_id].quantity;
+      planet_bid = Math.round(this.planet.tradegoods[tradegood_id].bid * 100.0) / 100.0;
+      planet_ask = Math.round(this.planet.tradegoods[tradegood_id].ask * 100.0) / 100.0;
+    }
+    html += '<tr>';
+    html += '<td>' + this.TradeGoods[tradegood_id].name + '</td>';
+    html += '<td>$' + (Math.round(this.TradeGoods[tradegood_id].price * 100.0) / 100.0) + '</td>';
+    html += '<td>' + station_qty + '</td>';
+    html += '<td><div class="input-group"><span class="input-group-btn"><button class="btn btn-default btn-sm btn-bid-minus" type="button" data-tradegood="' + tradegood_id + '">-</button></span><input type="text" class="form-control input-sm input-block-turn" value="' + station_bid + '" data-tradegood="' + tradegood_id + '" id="input-bid-' + tradegood_id + '"/><span class="input-group-btn"><button class="btn btn-default btn-sm btn-bid-plus" type="button" data-tradegood="' + tradegood_id + '">+</button></span></div></td>';
+    html += '<td><div class="input-group"><span class="input-group-btn"><button class="btn btn-default btn-sm btn-ask-minus" type="button" data-tradegood="' + tradegood_id + '">-</button></span><input type="text" class="form-control input-sm input-block-turn" value="' + station_ask + '" data-tradegood="' + tradegood_id + '" id="input-ask-' + tradegood_id + '"/><span class="input-group-btn"><button class="btn btn-default btn-sm btn-ask-plus" type="button" data-tradegood="' + tradegood_id + '">+</button></span></div></td>';
+    html += '<td><div class="input-group"><span class="input-group-btn"><button class="btn btn-default btn-sm btn-buy-minus" type="button" data-tradegood="' + tradegood_id + '">-</button></span><input type="text" class="form-control input-sm input-block-turn" value="' + station_buy + '" data-tradegood="' + tradegood_id + '" id="input-buy-' + tradegood_id + '"/><span class="input-group-btn"><button class="btn btn-default btn-sm btn-buy-plus" type="button" data-tradegood="' + tradegood_id + '">+</button></span></div></td>';
+    html += '<td>' + planet_qty + '</td>';
+    html += '<td>' + planet_bid + '</td>';
+    html += '<td>' + planet_ask + '</td>';
+    html += '</tr>';
   }
   $(".tbl-market-body").html(html);
+  for (var tradegood_id in this.TradeGoods) {
+    if (Game.station.tradegoods[tradegood_id] !== undefined) {
+      $("#input-bid-" + tradegood_id).change(function(evt) {
+        Game.station.tradegoods[$(this).data("tradegood")].bid = $(this).val();
+      });
+      $("#input-ask-" + tradegood_id).change(function(evt) {
+        Game.station.tradegoods[$(this).data("tradegood")].ask = $(this).val();
+      });
+      $("#input-buy-" + tradegood_id).change(function(evt) {
+        Game.station.tradegoods[$(this).data("tradegood")].buy = $(this).val();
+      });
+    }
+  }
+  $(".btn-bid-minus").click(function(evt) {
+    evt.preventDefault();
+    var val = $("#input-bid-" + $(this).data("tradegood")).val();
+    val = Number(val) - Math.round(val / 10.0) / 10.0;
+    val = val < 0 ? 0 : val;
+    $("#input-bid-" + $(this).data("tradegood")).val(Math.round(val * 100.0) / 100.0);
+    $("#input-bid-" + $(this).data("tradegood")).trigger('change');
+  });
+  $(".btn-bid-plus").click(function(evt) {
+    evt.preventDefault();
+    var val = $("#input-bid-" + $(this).data("tradegood")).val();
+    val = Number(val) + Math.round(val / 10.0) / 10.0;
+    $("#input-bid-" + $(this).data("tradegood")).val(Math.round(val * 100.0) / 100.0);
+    $("#input-bid-" + $(this).data("tradegood")).trigger('change');
+  });
+  $(".btn-ask-minus").click(function(evt) {
+    evt.preventDefault();
+    var val = $("#input-ask-" + $(this).data("tradegood")).val();
+    val = Number(val) - Math.round(val / 10.0) / 10.0;
+    val = val < 0 ? 0 : val;
+    $("#input-ask-" + $(this).data("tradegood")).val(Math.round(val * 100.0) / 100.0);
+    $("#input-ask-" + $(this).data("tradegood")).trigger('change');
+  });
+  $(".btn-ask-plus").click(function(evt) {
+    evt.preventDefault();
+    var val = $("#input-ask-" + $(this).data("tradegood")).val();
+    val = Number(val) + Math.round(val / 10.0) / 10.0;
+    $("#input-ask-" + $(this).data("tradegood")).val(Math.round(val * 100.0) / 100.0);
+    $("#input-ask-" + $(this).data("tradegood")).trigger('change');
+  });
+  $(".btn-buy-minus").click(function(evt) {
+    evt.preventDefault();
+    var val = $("#input-buy-" + $(this).data("tradegood")).val();
+    val = Number(val) - 1;
+    val = val < 0 ? 0 : val;
+    $("#input-buy-" + $(this).data("tradegood")).val(val);
+    $("#input-buy-" + $(this).data("tradegood")).trigger('change');
+  });
+  $(".btn-buy-plus").click(function(evt) {
+    evt.preventDefault();
+    var val = $("#input-buy-" + $(this).data("tradegood")).val();
+    val = Number(val) + 1;
+    $("#input-buy-" + $(this).data("tradegood")).val(val);
+    $("#input-buy-" + $(this).data("tradegood")).trigger('change');
+  });
 },
 draw: function() {
   context = this.canvas.getContext("2d");
@@ -378,42 +521,88 @@ draw: function() {
   // draw modules
   for (var yy = 0; yy < this.station.stationmap.length; yy++) {
     for (var xx = 0; xx < this.station.stationmap[yy].length; xx++) {
-      var x = this.offset_x + (((this.tile_wide + this.spacing) * xx) * this.scale);
-      var y = this.offset_y + (((this.tile_high + this.spacing) * yy) * this.scale);
-      var w = this.tile_wide * this.scale;
-      var h = this.tile_high * this.scale;
+      var x = Math.round(this.offset_x + (((this.tile_wide + this.spacing) * xx) * this.scale));
+      var y = Math.round(this.offset_y + (((this.tile_high + this.spacing) * yy) * this.scale));
+      var w = Math.round(this.tile_wide * this.scale);
+      var h = Math.round(this.tile_high * this.scale);
       if (this.station.stationmap[yy][xx] == null) {
-          context.fillStyle = "rgba(0, 0, 0, 0.2)";
-          context.strokeStyle = "#000";
-          context.fillRect(x, y, w, h);
-          context.lineWidth = 3;
-          context.strokeRect(x, y, w, h);
+        img = "x";
+        var north = this.getCellAt(xx, yy-1);
+        var south = this.getCellAt(xx, yy+1);
+        var west = this.getCellAt(xx-1, yy);
+        var east = this.getCellAt(xx+1, yy);
+        img += '_';
+        img += (north !== null ? '1' : '0');
+        img += (south !== null ? '1' : '0');
+        img += (west !== null ? '1' : '0');
+        img += (east !== null ? '1' : '0');
+        img += '.png';
+        context.fillStyle = "rgba(0, 0, 0, 0.2)";
+        context.strokeStyle = "#111";
+        context.fillRect(x, y, w, h);
+        context.lineWidth = 1;
+        context.strokeRect(x, y, w, h);
+        if (this.images[img] !== undefined) {
+          context.drawImage(this.images[img], x, y, w, h);
+        }
       } else {
         var cell = this.station.stationcells[this.station.stationmap[yy][xx]];
         var module = this.Modules[cell.module];
         try {
-          context.fillStyle = module.fill_style;
-          context.strokeStyle = module.stroke_style;
-          context.fillRect(x, y, w, h);
-          context.lineWidth = 3;
-          context.strokeRect(x, y, w, h);
-          context.fillStyle = "#000";
-          context.lineWidth = 1;
-          context.textAlign = "center";
-          context.textBaseline = "middle";
-          context.font = "bold 10px sans-serif";
-          context.fillText(module.name, x + (this.tile_wide / 2), y + (this.tile_high / 2));
+          var img = module.short;
+          if (module.is_system) {
+            if (cell.on) {
+              img += '_1';
+            } else {
+              img += '_0';
+            }
+          }
+          if (module.is_corridor) {
+            // contextual module
+            var north = this.getCellAt(xx, yy-1);
+            var south = this.getCellAt(xx, yy+1);
+            var west = this.getCellAt(xx-1, yy);
+            var east = this.getCellAt(xx+1, yy);
+            img += '_';
+            img += (north !== null && north.module == cell.module ? '1' : '0');
+            img += (south !== null && south.module == cell.module ? '1' : '0');
+            img += (west !== null && west.module == cell.module ? '1' : '0');
+            img += (east !== null && east.module == cell.module ? '1' : '0');
+          }
+          img += '.png';
+          if (this.images[img] === undefined) {
+            context.fillStyle = module.fill_style;
+            context.strokeStyle = module.stroke_style;
+            context.fillRect(x, y, w, h);
+            context.lineWidth = 3;
+            context.strokeRect(x, y, w, h);
+            context.fillStyle = "#000";
+            context.lineWidth = 1;
+            context.textAlign = "center";
+            context.textBaseline = "middle";
+            context.font = "bold 10px sans-serif";
+            context.fillText(module.name, x + (this.tile_wide / 2), y + (this.tile_high / 2));
+          } else {
+            context.drawImage(this.images[img], x, y, w, h);
+          }
+          for (var ii = 0; ii < cell.crew.length; ii++) {
+            img = this.images[this.getCrewImage(this.station.crew[cell.crew[ii]])];
+            var cx = Math.round(x + ((this.tile_wide - (cell.crew.length * img.width)) / 2) + (img.width * ii));
+            var cy = Math.round(y + ((this.tile_high - img.height) / 2))
+            context.drawImage(img, cx, cy);
+          }
         } catch (ex) {}
       }
     }
   }
   // tooltip
   if (this.mx != null && this.my != null) {
-    var cell = this.getCoordinateAt(this.mx, this.my);
-    if (cell.x >= 0 && cell.x < this.station.wide && cell.y >= 0 && cell.y < this.station.high) {
+    var coord = this.getCoordinateAt(this.mx, this.my);
+    if (coord.x >= 0 && coord.x < this.station.wide && coord.y >= 0 && coord.y < this.station.high) {
       var tip = "Click to add a module";
-      if (this.station.stationmap[cell.y][cell.x] != null) {
-        tip = "Click to select";
+      var cell = this.getCellAt(coord.x, coord.y);
+      if (cell != null) {
+        tip = this.Modules[cell.module].name;
       }
       context.fillStyle = "#fff";
       context.textAlign = "left";
@@ -438,8 +627,11 @@ setMap: function(xx, yy, module_id) {
       Game.station = data.station;
       Game.draw();
       var coords = Game.getCoordinateAt(Game.mx, Game.my);
-      Game.selectModule(coords.x, coords.y);
-      Game.updateSelected();
+      var cell = Game.getCellAt(coords.x, coords.y);
+      if (cell !== null) {
+        Game.selectModule(coords.x, coords.y);
+        Game.updateSelected();
+      }
     },
   });
 },
@@ -448,16 +640,18 @@ addModule: function(xx, yy) {
   var html = '<select id="sel-module" class="form-control">';
   for (var module_id in Game.Modules) {
     // check module elegibility
-    var allow = Game.Modules[module_id].is_entry;
+    var allow = Game.Modules[module_id].is_entry; // entry always allowed
     for (var neighbor_y = Math.max(0, yy - 1); !allow && neighbor_y <= Math.min(Game.station.high - 1, yy + 1); neighbor_y++) {
       var cell = Game.getCellAt(xx, neighbor_y);
-      if (cell !== null && (cell.module == module_id || Game.Modules[cell.module].is_corridor)) {
+      //if (cell !== null && (cell.module == module_id || Game.Modules[cell.module].is_corridor || (Game.Modules[module_id].is_corridor && Game.Modules[cell.module].is_entry))) {
+      if (cell !== null && (Game.Modules[cell.module].is_corridor || (Game.Modules[module_id].is_corridor && Game.Modules[cell.module].is_entry))) {
         allow = true;
       }
     }
     for (var neighbor_x = Math.max(0, xx - 1); !allow && neighbor_x <= Math.min(Game.station.wide - 1, xx + 1); neighbor_x++) {
       var cell = Game.getCellAt(neighbor_x, yy);
-      if (cell !== null && (cell.module == module_id || Game.Modules[cell.module].is_corridor)) {
+      //if (cell !== null && (cell.module == module_id || Game.Modules[cell.module].is_corridor || (Game.Modules[module_id].is_corridor && Game.Modules[cell.module].is_entry))) {
+      if (cell !== null && (Game.Modules[cell.module].is_corridor || (Game.Modules[module_id].is_corridor && Game.Modules[cell.module].is_entry))) {
         allow = true;
       }
     }
@@ -531,6 +725,7 @@ load: function() {
     type: "GET",
     success: function(data) {
       Game.station = data.station;
+      Game.planet = data.station.planet;
       Game.start();
     },
   });
@@ -544,6 +739,7 @@ reset: function() {
     data: JSON.stringify(data),
     success: function(data) {
       Game.station = data.station;
+      Game.planet = data.station.planet;
       Game.start();
     },
   });

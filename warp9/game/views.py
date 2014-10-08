@@ -111,6 +111,7 @@ def init(request):
     roles = {}
     skills = {}
     modules = {}
+    planetattributes = {}
     for obj in AlertLevel.objects.all():
         alertlevels[obj.pk] = obj.get_json()
     for obj in TradeGood.objects.all():
@@ -121,12 +122,15 @@ def init(request):
         skills[obj.pk] = obj.get_json()
     for obj in Module.objects.all():
         modules[obj.pk] = obj.get_json()
+    for obj in PlanetAttribute.objects.all():
+        planetattributes[obj.pk] = obj.get_json()
     return {
             "alertlevels": alertlevels,
             "tradegoods": tradegoods,
             "roles": roles,
             "skills": skills,
-            "modules": modules }
+            "modules": modules,
+            "planetattributes": planetattributes }
 
 @csrf_exempt
 @json_view
@@ -148,6 +152,26 @@ def stations(request):
         name = names.get_full_name()
         person = Person(station=station, stationcell=cell, name=name)
         person.save()
+        # set up the planet
+        planet = Planet(station=station, cargo=600, credits=10000)
+        planet.name = "%s %i" % (names.get_last_name(), random.randint(1, 12))
+        planet.save()
+        for pa in PlanetAttribute.objects.all():
+            s = pa.planetattributesetting_set.all().order_by('?')[0]
+            planet.settings.add(s)
+        """
+        for tg in TradeGood.objects.all():
+            stg = MarketTradeGood(station=station, tradegood=tg)
+            stg.quantity = 0
+            stg.bid = tg.price * 0.99
+            stg.ask = tg.price * 1.01
+            stg.save()
+            ptg = MarketTradeGood(planet=planet, tradegood=tg)
+            ptg.quantity = 50
+            ptg.bid = tg.price * 0.99
+            ptg.ask = tg.price * 1.01
+            ptg.save()
+        """
         # set up recruits
         for ii in xrange(10):
             person = Person(station=station, name=names.get_full_name())
@@ -155,7 +179,7 @@ def stations(request):
         # now save
         station.save()
         # and return
-        return {"station": station.get_json()}
+        return { "station": station.get_json() }
     else:
         # return all
         objs = {}
@@ -167,17 +191,32 @@ def stations(request):
 @json_view
 def station(request, pk):
     if request.method == 'POST':
+        debug = {}
+        last = datetime.now()
         jreq = json.loads(request.raw_post_data)
         station = get_object_or_404(Station, pk=pk)
-        station.alertlevel_id = jreq['alertlevel']
+        if 'alertlevel' in jreq:
+            station.alertlevel_id = jreq['alertlevel']
+        if 'tradegoods' in jreq:
+            tradegoods = jreq['tradegoods']
+            for stg in station.markettradegood_set.all():
+                if str(stg.tradegood_id) in tradegoods:
+                    tradegood = tradegoods[str(stg.tradegood_id)]
+                    stg.bid = tradegood['bid']
+                    stg.ask = tradegood['ask']
+                    stg.buy = tradegood['buy']
+                    stg.save()
         dt = datetime.now() - station.last_turn
         if dt.seconds < 5:
             # not time yet to process a turn
+            planet = Planet.objects.get(station=station)
             return {"station": station.get_json()}
         # take a turn
         station.last_turn = datetime.now()
         # first, let's reset cells
         station.stationcell_set.all().update(on=False, efficiency=0)
+        debug['1'] = "%i:%i" % ((datetime.now() - last).seconds, (datetime.now() - last).microseconds)
+        last = datetime.now()
         # now update the crew
         for pe in station.person_set.filter(stationcell__isnull=False):
             if pe.path:
@@ -211,7 +250,7 @@ def station(request, pk):
                         ps = PersonSkill(person=pe,
                                 skill=pe.stationcell.module.skill)
                     ps.progress += 1
-                    if math.log(ps.progress) > ps.rank + 1:
+                    if ps.progress > (ps.rank + 1) * 100:
                         ps.rank += 1
                         ps.progress = 0
                     ps.save()
@@ -243,38 +282,51 @@ def station(request, pk):
             if not pe.action:
                 # find the closest cell with something to do
                 # this should be optimized later to prioritize all options
+                iterations = 0
+                checked = []
                 queue = collections.deque()
-                for n in pe.stationcell.neighbors.all():
-                    queue.append([n])
+                queue.append([pe.stationcell])
                 while queue and not pe.action:
+                    iterations += 1
                     path = queue.popleft()
                     cell = path[-1]
                     if not cell.on\
                             and ((pe.role\
                                 and (station.life < 0
                                     or station.alertlevel.threshold < 0\
-                                    or pe.sleep >= 100\
-                                    and pe.health >= 100)\
+                                    or pe.sleep > station.alertlevel.threshold\
+                                    and pe.morale >\
+                                        station.alertlevel.threshold\
+                                    and pe.health >\
+                                        station.alertlevel.threshold)\
                                 and cell.module.roles.filter(
                                         id=pe.role_id).exists())\
                             or (station.life >= 0\
                                 and station.alertlevel.threshold >= 0\
                                 and ((cell.module.health > 0\
-                                        and pe.health < 100)\
+                                        and pe.health <=\
+                                            station.alertlevel.threshold)\
                                     or (cell.module.sleep > 0\
-                                        and pe.sleep < 100)\
+                                        and pe.sleep <=\
+                                            station.alertlevel.threshold)\
                                     or (cell.module.morale > 0\
-                                        and pe.morale < 100)))):
+                                        and pe.morale <=\
+                                            station.alertlevel.threshold)))):
                         # move toward this cell
                         pe.action = "Walking to %s" % cell.module.name
                         pe.stationcell = path.pop(0)
                         pe.path = ','.join(str(x.id) for x in path)
+                    # mark this cell as checked
+                    checked.append(cell.id)
                     # this could be optimized later by crawling corridors
                     for n in cell.neighbors.all():
-                        new_path = list(path)
-                        if not n in path:
-                            new_path.append(n)
-                            queue.append(new_path)
+                        if not n.id in checked:
+                            if n.module_id == cell.module_id\
+                                    or cell.module.is_corridor\
+                                    or n.module.is_corridor:
+                                new_path = list(path)
+                                new_path.append(n)
+                                queue.append(new_path)
             if not pe.action:
                 # wander
                 pe.action = "Wandering"
@@ -290,17 +342,22 @@ def station(request, pk):
                 pe.morale = 0
             pe.save()
             station.save()
+        debug['2'] = "%i:%i" % ((datetime.now() - last).seconds, (datetime.now() - last).microseconds)
+        last = datetime.now()
         # now let's update station status
         station.power = 0
         station.life = 0
         station.weapons = 0
+        station.cargo = 0
         workers = {}
         skills = {}
         for sc in station.stationcell_set.filter(on=True):
             for me in sc.module.enables.all():
                 if not me.id in workers:
                     workers[me.id] = 0
-                workers[me.id] += 1
+                if sc.module.skill_id == me.skill_id:
+                    # control rooms with a different skill don't add workers
+                    workers[me.id] += 1
                 if not me.id in skills:
                     skills[me.id] = []
                 for p in sc.person_set.all():
@@ -317,38 +374,245 @@ def station(request, pk):
                         skills[me.id].append(s.rank)
                     else:
                         skills[me.id].append(0)
+        debug['3'] = "%i:%i" % ((datetime.now() - last).seconds, (datetime.now() - last).microseconds)
+        last = datetime.now()
         # now we can calculate efficiency
-        for module in Module.objects.exclude(power__lte=0, life__lte=0,
-                weapons__lte=0):
-            if module.id in workers:
-                workers_tot = workers[module.id]
-                skill_avg = sum(skills[module.id]) / len(skills[module.id])
-            else:
-                workers_tot = 0
-                skill_avg = 0
-            for sc in station.stationcell_set.filter(module__id=module.id):
+        for sc in station.stationcell_set.exclude(module__power=0,
+                module__life=0, module__weapons=0, module__cargo=0):
+            if sc.module_id in workers:
+                sc.on = True
+                workers_tot = workers[sc.module_id]
+                skill_avg = sum(skills[sc.module_id])\
+                        / len(skills[sc.module_id])
                 sc.efficiency = (Station.get_efficiency(workers_tot)\
                         + Station.get_efficiency(skill_avg)) / 2
-                if sc.module.power > 0:
-                    station.power += round(sc.module.power * sc.efficiency)
-                if sc.module.life > 0:
-                    station.life += round(sc.module.life * sc.efficiency)
-                if sc.module.weapons > 0:
-                    station.weapons += round(sc.module.weapons * sc.efficiency)
-                sc.save()
-        for sc in station.stationcell_set.exclude(module__power__gte=0,
-                module__life__gte=0, module__weapons__gte=0):
-            if sc.module.power < 0:
+            elif sc.module.power > 0 or sc.module.life > 0\
+                    or sc.module.weapons > 0 or sc.module.cargo > 0:
+                workers_tot = 0
+                skill_avg = 0
+                sc.efficiency = (Station.get_efficiency(workers_tot)\
+                        + Station.get_efficiency(skill_avg)) / 2
+            if sc.module.power > 0:
+                station.power += round(sc.module.power * sc.efficiency)
+            elif sc.module.power < 0:
                 station.power += round(sc.module.power)
-            if sc.module.life < 0:
+            if sc.module.life > 0:
+                station.life += round(sc.module.life * sc.efficiency)
+            elif sc.module.life < 0:
                 station.life += round(sc.module.life)
-            if sc.module.weapons < 0:
+            if sc.module.weapons > 0:
+                station.weapons += round(sc.module.weapons * sc.efficiency)
+            elif sc.module.weapons < 0:
                 station.weapons += round(sc.module.weapons)
+            if sc.module.cargo > 0:
+                station.cargo += round(sc.module.cargo * sc.efficiency)
+            sc.save()
         station.save()
-        return {"station": station.get_json()}
+        debug['4'] = "%i:%i" % ((datetime.now() - last).seconds, (datetime.now() - last).microseconds)
+        last = datetime.now()
+        # planet production
+        planet = Planet.objects.get(station=station)
+        planet_cargo_available = planet.get_cargo_available()
+        dt = datetime.now() - planet.last_turn
+        if dt.seconds >= 60:
+            planet.last_turn = datetime.now()
+            for pas in planet.settings.all():
+                if pas.produces:
+                    try:
+                        mtg = planet.markettradegood_set.get(tradegood=pas.produces)
+                    except:
+                        mtg = MarketTradeGood(planet=planet, tradegood=pas.produces)
+                        mtg.bid = pas.produces.price
+                        mtg.ask = pas.produces.price
+                    if planet_cargo_available > 0:
+                        mtg.quantity += pas.produces.production
+                        planet_cargo_available -= pas.produces.production
+                        # producing, so reduce prices
+                        mtg.ask -= pas.produces.price / 1000.0
+                        if mtg.bid >= mtg.ask:
+                            mtg.bid -= pas.produces.price / 1000.0
+                    else:
+                        # full, so discount ask price 1% of market
+                        mtg.bid -= pas.produces.price / 100.0
+                        if mtg.bid >= mtg.ask:
+                            mtg.ask -= pas.produces.price / 100.0
+                    mtg.save()
+                if pas.consumes:
+                    try:
+                        mtg = planet.markettradegood_set.get(tradegood=pas.consumes)
+                    except:
+                        mtg = MarketTradeGood(planet=planet, tradegood=pas.consumes)
+                        mtg.bid = pas.consumes.price
+                        mtg.ask = pas.consumes.price
+                    if mtg.quantity > 0:
+                        mtg.quantity -= min(mtg.quantity,
+                                pas.consumes.production)
+                        planet_cargo_available -= pas.consumes.production
+                        # consuming, so increase prices
+                        mtg.bid += pas.consumes.price / 1000.0
+                        if mtg.ask <= mtg.bid:
+                            mtg.ask += pas.consumes.price / 1000.0
+                    else:
+                        # out, so increase bid price 1% of market
+                        mtg.bid += pas.consumes.price / 100.0
+                        if mtg.ask <= mtg.bid:
+                            mtg.ask += pas.consumes.price / 100.0
+                    mtg.save()
+            # price updates
+            """ Commenting this out for different price method
+            for ptg in planet.markettradegood_set.all():
+                # check the market
+                if ptg.quantity == 0:
+                    # empty, buy at any price
+                    ptg.bid += ptg.bid / 1000.0
+                    # don't sell
+                    ptg.ask += ptg.ask / 100.0
+                    ptg.save()
+                elif ptg.quantity < planet.cargo / 6 * 0.3:
+                    # very low, try to buy
+                    ptg.bid += ptg.bid / 10000.0
+                    # try not to sell
+                    ptg.ask += ptg.ask / 1000.0
+                    ptg.save()
+                elif ptg.quantity < planet.cargo / 6 * 0.7:
+                    # moderate amount, hold value
+                    pass
+                elif ptg.quantity < planet.cargo / 6:
+                    # running out of room, try to sell
+                    ptg.ask -= ptg.ask / 10000.0
+                    # try not to buy
+                    ptg.bid -= ptg.bid / 1000.0
+                    ptg.save()
+                else:
+                    # full, deep discount
+                    ptg.ask -= ptg.ask / 1000.0
+                    # don't buy
+                    ptg.bid -= ptg.bid / 100.0
+                    ptg.save()
+            """
+            planet.save()
+        debug['5'] = "%i:%i" % ((datetime.now() - last).seconds, (datetime.now() - last).microseconds)
+        last = datetime.now()
+        # trade with station
+        station_cargo_available = station.get_cargo_available()
+        for tg in TradeGood.objects.all().order_by('?'):
+            try:
+                ptg = planet.markettradegood_set.get(tradegood=tg)
+            except:
+                ptg = MarketTradeGood(planet=planet, tradegood=tg)
+                ptg.bid = tg.price
+                ptg.ask = tg.price
+                ptg.save()
+            try:
+                stg = station.markettradegood_set.get(tradegood=tg)
+            except:
+                stg = MarketTradeGood(station=station, tradegood=tg)
+                stg.bid = tg.price
+                stg.ask = tg.price
+                stg.save()
+            if ptg.quantity > 0 and stg.bid >= ptg.ask\
+                    and station.credits >= ptg.ask\
+                    and station_cargo_available > 0\
+                    and stg.buy > stg.quantity:
+                # planet sell to station
+                qty = 1
+                stg.quantity += qty
+                station.credits -= ptg.ask * qty
+                planet.credits += ptg.ask * qty
+                ptg.quantity -= qty
+                # raise price on planet to reflect demand
+                ptg.ask += tg.price / 1000.0
+                # save
+                station.save()
+                planet.save()
+                stg.save()
+                ptg.save()
+                station_cargo_available -= qty
+                # only 1 trade per turn
+                break
+            elif stg.quantity > 0 and ptg.bid >= stg.ask and\
+                    planet.credits >= stg.ask and planet_cargo_available > 0:
+                # planet buy from station
+                qty = 1
+                ptg.quantity += qty
+                station.credits += stg.ask * qty
+                planet.credits -= stg.ask * qty
+                stg.quantity -= qty
+                # drop bid price on planet to refluct apparent supply
+                ptg.bid -= tg.price / 1000.0
+                # save
+                station.save()
+                planet.save()
+                stg.save()
+                ptg.save()
+                # only 1 trade per turn
+                break
+        debug['6'] = "%i:%i" % ((datetime.now() - last).seconds, (datetime.now() - last).microseconds)
+        last = datetime.now()
+        # trade with ships
+        for ship in station.ship_set.all():
+            ship_cargo_available = ship.get_cargo_available()
+            # remove station unless successful trade
+            ship.station = None
+            for tg in TradeGood.objects.all().order_by('?'):
+                try:
+                    shtg = ship.markettradegood_set.get(tradegood=tg)
+                except:
+                    shtg = MarketTradeGood(ship=ship, tradegood=tg)
+                    shtg.quantity = 0
+                # ships trade at straight market +/- 1%
+                shtg.bid = tg.price * 0.99
+                shtg.ask = tg.price * 1.01
+                sttg = station.markettradegood_set.get(tradegood=tg)
+                if shtg.quantity > 0 and sttg.bid >= shtg.ask\
+                        and station.credits >= shtg.ask\
+                        and station_cargo_available > 0\
+                        and stg.buy > stg.quantity:
+                    # ship sell to station
+                    qty = min(math.floor(station.credits / shtg.ask),
+                            shtg.quantity, sttg.buy)
+                    sttg.quantity += qty
+                    station.credits -= shtg.ask * qty
+                    ship.credits += shtg.ask * qty
+                    shtg.quantity -= qty
+                    # keep it here since we're trading
+                    ship.station = station
+                    station.save()
+                    sttg.save()
+                    shtg.save()
+                    traded = True
+                elif sttg.quantity > 0 and shtg.bid >= sttg.ask and\
+                        ship.credits >= sttg.ask and\
+                        ship_cargo_available > 0:
+                    # ship buy from station
+                    qty = min(math.floor(ship.credits / sttg.ask),
+                            sttg.quantity)
+                    shtg.quantity += qty
+                    station.credits += sttg.ask * qty
+                    ship.credits -= sttg.ask * qty
+                    sttg.quantity -= qty
+                    station.save()
+                    # keep it here since we're trading
+                    ship.station = station
+                    sttg.save()
+                    shtg.save()
+                    traded = True
+            ship.save()
+        debug['7'] = "%i:%i" % ((datetime.now() - last).seconds, (datetime.now() - last).microseconds)
+        last = datetime.now()
+        # check ships
+        if not station.ship_set.all().exists():
+            # steal a ship
+            ship = Ship.objects.all().order_by('?')[0]
+            ship.station = station
+            ship.save()
+        debug['8'] = "%i:%i" % ((datetime.now() - last).seconds, (datetime.now() - last).microseconds)
+        last = datetime.now()
+        return {"station": station.get_json(), "debug": debug}
     else:
-        obj = get_object_or_404(Station, pk=pk)
-        return {"station": obj.get_json()}
+        station = get_object_or_404(Station, pk=pk)
+        planet = Planet.objects.get(station=station)
+        return { "station": station.get_json() }
 
 @csrf_exempt
 @json_view

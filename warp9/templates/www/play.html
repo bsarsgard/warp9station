@@ -8,7 +8,7 @@
     right: 10px;
   }
 </style>
-<h1>Space Station Name</h1>
+<h1>Terok Nor</h1>
 <div class="row">
   <div class="col-lg-9">
     <ul class="nav nav-tabs">
@@ -16,6 +16,7 @@
       <li><a href="#crew" data-toggle="tab">Crew</a></li>
       <li><a href="#planet" data-toggle="tab">Planet</a></li>
       <li><a href="#market" data-toggle="tab">Market</a></li>
+      <li><a href="#ships" data-toggle="tab">Ships</a></li>
     </ul>
     <div id="myTabContent" class="tab-content">
       <div class="tab-pane fade active in" id="map">
@@ -33,6 +34,7 @@
         <table class="table table-striped table-hover">
           <thead>
             <tr>
+              <th>&nbsp;</th>
               <th>Name</th>
               <th>Role</th>
               <th>Salary</th>
@@ -46,6 +48,7 @@
           </thead>
           <tbody class="tbl-crew-body">
             <tr>
+              <td><img src="/media/img/warp9/person.png" /></td>
               <td>James Tiberius Kirk</td>
               <td>Captain</td>
               <td>Quarters</td>
@@ -75,7 +78,7 @@
         </table>
       </div>
       <div class="tab-pane fade" id="planet">
-        <h3>Earth</h3>
+        <h3 class="planet-name">Earth</h3>
         <table class="table table-striped table-hover">
           <tbody class="tbl-planet-body">
             <tr>
@@ -112,12 +115,43 @@
             <tr>
               <th>Good</th>
               <th>Market Price</th>
-              <th>Cargo</th>
+              <th>Station</th>
+              <th>Bid</th>
+              <th>Ask</th>
+              <th>Buy</th>
+              <th>Planet</th>
+              <th>Bid</th>
+              <th>Ask</th>
             </tr>
           </thead>
           <tbody class="tbl-market-body">
             <tr>
               <td>Thing</td>
+              <td>$100</td>
+              <td>10</td>
+              <td>10</td>
+              <td>10</td>
+              <td>10</td>
+              <td>100</td>
+              <td>10</td>
+              <td>10</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="tab-pane fade" id="ships">
+        <h3>Ships</h3>
+        <table class="table table-striped table-hover">
+          <thead>
+            <tr>
+              <th>Ship</th>
+              <th>Credits</th>
+              <th>Cargo</th>
+            </tr>
+          </thead>
+          <tbody class="tbl-ships-body">
+            <tr>
+              <td>USS Enterprise</td>
               <td>$100</td>
               <td>10</td>
             </tr>
@@ -162,6 +196,10 @@
           <a class="list-group-item" href="#">
             Life Support
             <span class="badge status-life">0</span>
+          </a>
+          <a class="list-group-item" href="#">
+            Cargo
+            <span class="badge status-cargo">0</span>
           </a>
         </div>
         <button class="btn btn-default btn-reset">Reset</button>
